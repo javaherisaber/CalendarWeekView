@@ -1,0 +1,3 @@
+rootProject.name='CalendarWeekView'
+include ':app'
+include ':lib'

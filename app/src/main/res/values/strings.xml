@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">CalendarWeekView</string>
+    <string name="display_mode_week">CalendarWeekView</string>
+    <string name="display_mode_day">CalendarDayView</string>
+    <string name="display_mode">Display Mode</string>
+</resources>

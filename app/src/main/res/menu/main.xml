@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/menuItem_activityMain_displayMode"
+        android:icon="@drawable/ic_view_day_black_24dp"
+        android:title="@string/display_mode"
+        app:showAsAction="always" />
+</menu>

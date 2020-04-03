@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="CalendarWeekView">
+        <attr name="hourDividerColor" format="color" />
+        <attr name="halfHourDividerColor" format="color" />
+        <attr name="verticalDividerColor" format="color" />
+        <attr name="scheduleColor" format="color" />
+
+        <attr name="dividerHeight" format="dimension" />
+        <attr name="verticalDividerWidth" format="dimension" />
+        <attr name="halfHourHeight" format="dimension" />
+        <attr name="hourLabelWidth" format="dimension" />
+        <attr name="hourLabelMarginEnd" format="dimension" />
+        <attr name="eventMargin" format="dimension" />
+
+        <attr name="startHour" format="integer" />
+        <attr name="endHour" format="integer" />
+        <attr name="dayCount" format="integer" />
+    </declare-styleable>
+</resources>
