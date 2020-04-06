@@ -1,4 +1,4 @@
-package ir.logicbase.calendarweekview.event
+package ir.logicbase.calendarweekview.column
 
 import ir.logicbase.calendarweekview.TimeRange
 import kotlin.math.max

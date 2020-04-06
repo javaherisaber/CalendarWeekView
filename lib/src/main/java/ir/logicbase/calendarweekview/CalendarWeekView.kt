@@ -8,7 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.CallSuper
 import androidx.core.view.ViewCompat
-import ir.logicbase.calendarweekview.event.ColumnSpansHelper
+import ir.logicbase.calendarweekview.column.ColumnSpansHelper
 import kotlin.math.max
 import kotlin.math.min
 
@@ -21,10 +21,10 @@ class CalendarWeekView constructor(
     private val hourDividerRects: MutableList<DirectionalRect>
     private val halfHourDividerRects: MutableList<DirectionalRect>
     private val verticalDividerRects = mutableListOf<DirectionalRect>()
-    private val scheduleRects = mutableListOf<DirectionalRect>()
+    private val scheduleRects = HashMap<Int, MutableList<DirectionalRect>>()
 
     // rectangles to locate view on ViewGroup
-    private val eventRects = mutableListOf<DirectionalRect>()
+    private val eventRects = HashMap<Int, MutableList<DirectionalRect>>()
     private val hourLabelRects: MutableList<DirectionalRect>
 
     // paints
@@ -35,11 +35,11 @@ class CalendarWeekView constructor(
 
     // views being drawn on ViewGroup
     private val hourLabelViews = mutableListOf<View>()
-    private val eventViews = mutableListOf<View>()
+    private val eventViews = HashMap<Int, MutableList<View>>()
 
     // time ranges
-    private val scheduleTimeRanges = mutableListOf<TimeRange>()
-    private val eventTimeRanges = mutableListOf<TimeRange>()
+    private val scheduleTimeRanges = HashMap<Int, MutableList<TimeRange>>()
+    private val eventTimeRanges = HashMap<Int, MutableList<TimeRange>>()
 
     // attrs
     private val startHour: Int
@@ -62,10 +62,9 @@ class CalendarWeekView constructor(
             field = value
             verticalDividerRects.clear()
             verticalDividerRects.addAll(MutableList(value) { DirectionalRect() })
-            requestLayout()
         }
 
-    private var eventColumnSpansHelper: ColumnSpansHelper? = null // helper class to calculate span width
+    private val eventColumnSpansHelper = HashMap<Int, ColumnSpansHelper>() // helper class to calculate span width
     private var isRtl = false
     private var parentWidth = 0 // ViewGroup width
     private var minuteHeight = 0f // the height in pixels taken up by each minute
@@ -142,35 +141,47 @@ class CalendarWeekView constructor(
      * times, this list must be equal in length to the list of event views,
      * or both should be null
      */
-    fun setEventViews(eventViews: List<View>?, eventTimeRanges: List<TimeRange>?) {
-        removeViews(this.eventViews)
+    fun setEventViews(eventViews: Map<Int, List<View>>?, eventTimeRanges: Map<Int, List<TimeRange>>?) {
+        this.eventViews.forEach { removeViews(it.value) }
         this.eventViews.clear()
         this.eventTimeRanges.clear()
         this.eventRects.clear()
-        eventColumnSpansHelper = null
+        this.eventColumnSpansHelper.clear()
         if (!eventViews.isNullOrEmpty() && !eventTimeRanges.isNullOrEmpty()) {
-            this.eventViews.addAll(eventViews)
-            eventTimeRanges.forEach {
-                if (it.endMinute > startMinute && it.startMinute < endMinute) {
-                    this.eventTimeRanges.add(it)
-                }
+            require(eventViews.size <= dayCount && eventTimeRanges.size <= dayCount) {
+                "eventViews or eventTimeRanges size cannot be greater than day count"
             }
-            eventColumnSpansHelper = ColumnSpansHelper(this.eventTimeRanges)
-            for (view in this.eventViews) {
-                addView(view)
-                eventRects.add(DirectionalRect())
+            eventTimeRanges.forEach { entry ->
+                val timeRanges = mutableListOf<TimeRange>()
+                entry.value.forEach {
+                    if (it.endMinute > startMinute && it.startMinute < endMinute) {
+                        timeRanges.add(it)
+                    }
+                }
+                this.eventTimeRanges[entry.key] = timeRanges
+                eventColumnSpansHelper[entry.key] = ColumnSpansHelper(timeRanges)
+            }
+            eventViews.forEach { entry ->
+                this.eventViews[entry.key] = entry.value.toMutableList()
+                val rects = mutableListOf<DirectionalRect>()
+                entry.value.forEach {
+                    addView(it)
+                    rects.add(DirectionalRect())
+                }
+                this.eventRects[entry.key] = rects
             }
         }
     }
 
-    fun setSchedules(timeRanges: List<TimeRange>?) {
-        scheduleRects.clear()
-        scheduleTimeRanges.clear()
-        if (!timeRanges.isNullOrEmpty()) {
-            scheduleRects.addAll(MutableList(timeRanges.size) { DirectionalRect() })
-            scheduleTimeRanges.addAll(timeRanges)
+    fun setSchedules(scheduleTimeRanges: Map<Int, List<TimeRange>>?) {
+        this.scheduleRects.clear()
+        this.scheduleTimeRanges.clear()
+        if (!scheduleTimeRanges.isNullOrEmpty()) {
+            for ((column, timeRanges) in scheduleTimeRanges) {
+                this.scheduleRects[column] = MutableList(timeRanges.size) { DirectionalRect() }
+                this.scheduleTimeRanges[column] = timeRanges.toMutableList()
+            }
         }
-        requestLayout()
     }
 
     /**
@@ -179,8 +190,8 @@ class CalendarWeekView constructor(
      * @return the event views that have been removed, they are safe to recycle and reuse at this
      * point
      */
-    fun removeEventViews(): List<View>? {
-        val eventViews: List<View> = eventViews
+    fun removeEventViews(): Map<Int, List<View>> {
+        val eventViews: Map<Int, List<View>> = eventViews
         setEventViews(null, null)
         return eventViews
     }
@@ -224,8 +235,7 @@ class CalendarWeekView constructor(
      * @return the vertical offset of the top of the first event in pixels, or zero if there are no
      * events
      */
-    val firstEventTop: Int
-        get() = if (eventRects.isNotEmpty()) eventRects[0].top else 0
+    fun firstEventTop(column: Int): Int = eventRects[column]?.get(0)?.top ?: 0
 
     /**
      * Useful if this view is hosted in a scroll view, the y coordinate returned can be used to
@@ -234,8 +244,7 @@ class CalendarWeekView constructor(
      * @return the vertical offset of the bottom of the first event in pixels, or zero if there are
      * no events
      */
-    val firstEventBottom: Int
-        get() = if (eventRects.isNotEmpty()) eventRects[0].bottom else 0
+    fun firstEventBottom(column: Int): Int = eventRects[column]?.get(0)?.bottom ?: 0
 
     /**
      * Useful if this view is hosted in a scroll view, the y coordinate returned can be used to
@@ -244,8 +253,7 @@ class CalendarWeekView constructor(
      * @return the vertical offset of the top of the last event in pixels, or zero if there are no
      * events
      */
-    val lastEventTop: Int
-        get() = if (eventRects.isNotEmpty()) eventRects.last().top else 0
+    fun lastEventTop(column: Int): Int = eventRects[column]?.last()?.top ?: 0
 
     /**
      * Useful if this view is hosted in a scroll view, the y coordinate returned can be used to
@@ -254,8 +262,7 @@ class CalendarWeekView constructor(
      * @return the vertical offset of the bottom of the last event in pixels, or zero if there are
      * no events
      */
-    val lastEventBottom: Int
-        get() = if (eventRects.isNotEmpty()) eventRects.last().bottom else 0
+    fun lastEventBottom(column: Int): Int = eventRects[column]?.last()?.bottom ?: 0
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         for (index in hourLabelViews.indices) {
@@ -263,10 +270,11 @@ class CalendarWeekView constructor(
             val rect = hourLabelRects[index]
             view.layout(rect.left, rect.top, rect.right, rect.bottom)
         }
-        for (index in eventViews.indices) {
-            val view = eventViews[index]
-            val rect = eventRects[index]
-            view.layout(rect.left, rect.top, rect.right, rect.bottom)
+        for ((column, views) in eventViews.entries) {
+            views.forEachIndexed { index, view ->
+                val rect = eventRects[column]?.getOrNull(index) ?: error("No rect found for eventView")
+                view.layout(rect.left, rect.top, rect.right, rect.bottom)
+            }
         }
     }
 
@@ -287,8 +295,10 @@ class CalendarWeekView constructor(
         for (rect in verticalDividerRects) {
             canvas.drawRect(rect, verticalDividerPaint)
         }
-        for (i in scheduleRects.indices) {
-            canvas.drawRect(scheduleRects[i], schedulePaint)
+        for ((_, rects) in scheduleRects) {
+            rects.forEach {
+                canvas.drawRect(it, schedulePaint)
+            }
         }
     }
 
@@ -325,14 +335,14 @@ class CalendarWeekView constructor(
         val measuredHeight = usableHeight + verticalPadding
 
         // Calculate the horizontal positions of the dividers
-        val dividerStart = hourLabelEnd + hourLabelMarginEnd
-        val dividerEnd = measuredWidth - if (isRtl) paddingLeft else paddingRight
+        val hDividerStart = hourLabelEnd + hourLabelMarginEnd
+        val hDividerEnd = measuredWidth - if (isRtl) paddingLeft else paddingRight
 
         // Set the rects for hour labels, dividers, and events
         setHourLabelRects(hourLabelStart, hourLabelEnd, firstDividerTop)
-        setDividerRects(firstDividerTop, dividerStart, dividerEnd)
-        setEventRects(firstDividerTop, minuteHeight, dividerStart, dividerEnd)
-        setScheduleRects(firstDividerTop, minuteHeight, dividerStart, dividerEnd)
+        setDividerRects(firstDividerTop, hDividerStart, hDividerEnd)
+        setEventRects(firstDividerTop, minuteHeight, hDividerStart, hDividerEnd)
+        setScheduleRects(firstDividerTop, minuteHeight, hDividerStart, hDividerEnd)
 
         // Measure the hour labels and events for a final time
         measureHourLabels()
@@ -370,61 +380,82 @@ class CalendarWeekView constructor(
         }
     }
 
-    private fun setDividerRects(firstDividerTop: Int, dividerStart: Int, dividerEnd: Int) {
+    private fun setDividerRects(firstHorizontalDividerTop: Int, hDividerStart: Int, hDividerEnd: Int) {
         for (index in hourDividerRects.indices) {
-            val top = firstDividerTop + index * 2 * usableHalfHourHeight
+            val top = firstHorizontalDividerTop + index * 2 * usableHalfHourHeight
             val bottom = top + dividerHeight
-            setRect(hourDividerRects[index], dividerStart, top, dividerEnd, bottom)
+            setRect(hourDividerRects[index], hDividerStart, top, hDividerEnd, bottom)
         }
         for (index in halfHourDividerRects.indices) {
-            val top = firstDividerTop + (index * 2 + 1) * usableHalfHourHeight
+            val top = firstHorizontalDividerTop + (index * 2 + 1) * usableHalfHourHeight
             val bottom = top + dividerHeight
-            setRect(halfHourDividerRects[index], dividerStart, top, dividerEnd, bottom)
+            setRect(halfHourDividerRects[index], hDividerStart, top, hDividerEnd, bottom)
         }
-        val verticalDividerBottom = (firstDividerTop * 2) + (hourDividerRects.size * 2 + 1) * usableHalfHourHeight
-        val verticalDividerOffset = (dividerEnd - dividerStart) / verticalDividerRects.size
+        val verticalDividerBottom = (firstHorizontalDividerTop * 2) + (hourDividerRects.size * 2 + 1) * usableHalfHourHeight
+        val verticalDividerOffset = columnWidth(hDividerStart, hDividerEnd)
         for (index in verticalDividerRects.indices) {
-            val start = dividerStart + (index * verticalDividerOffset)
+            val start = hDividerStart + (index * verticalDividerOffset)
             setRect(verticalDividerRects[index], start, 0, start + verticalDividerWidth, verticalDividerBottom)
         }
     }
 
-    private fun setEventRects(firstDividerTop: Int, minuteHeight: Float, dividerStart: Int, dividerEnd: Int) {
-        if (eventColumnSpansHelper == null) {
+    private fun columnWidth(hDividerStart: Int, hDividerEnd: Int) = (hDividerEnd - hDividerStart) / verticalDividerRects.size
+
+    private fun eventColumnWidth(hDividerStart: Int, hDividerEnd: Int): Int = if (dayCount == 1) {
+        // dayView column can contain multiple events
+        if (eventColumnSpansHelper[0]!!.columnCount > 0) {
+            (hDividerEnd - hDividerStart) / eventColumnSpansHelper[0]!!.columnCount
+        } else 0
+    } else columnWidth(hDividerStart, hDividerEnd)
+
+    private fun setEventRects(firstDividerTop: Int, minuteHeight: Float, hDividerStart: Int, hDividerEnd: Int) {
+        if (eventColumnSpansHelper.isEmpty()) {
             return
         }
-        val eventColumnWidth = if (eventColumnSpansHelper!!.columnCount > 0) {
-            (dividerEnd - dividerStart) / eventColumnSpansHelper!!.columnCount
-        } else 0
-        eventTimeRanges.forEachIndexed { index, timeRange ->
-            val columnSpan = eventColumnSpansHelper!!.columnSpans[index]
-            var filteredStartMinute = max(startMinute, timeRange.startMinute)
-            var duration = min(endMinute, timeRange.endMinute) - filteredStartMinute
-            if (duration < MIN_DURATION_MINUTES) {
-                duration = MIN_DURATION_MINUTES
-                filteredStartMinute = endMinute - duration
+        val eventColumnWidth = eventColumnWidth(hDividerStart, hDividerEnd)
+        for ((column, timeRanges) in eventTimeRanges) {
+            timeRanges.forEachIndexed { index, timeRange ->
+                var filteredStartMinute = max(startMinute, timeRange.startMinute)
+                var duration = min(endMinute, timeRange.endMinute) - filteredStartMinute
+                if (duration < MIN_DURATION_MINUTES) {
+                    duration = MIN_DURATION_MINUTES
+                    filteredStartMinute = endMinute - duration
+                }
+                val start: Int
+                val end: Int
+                if (dayCount == 1) {
+                    val columnSpan = eventColumnSpansHelper[column]!!.columnSpans[index]
+                    start = hDividerStart + (columnSpan.startColumn * eventColumnWidth) + eventMargin
+                    end = start + (columnSpan.endColumn - columnSpan.startColumn) * eventColumnWidth - eventMargin * 2
+                } else {
+                    start = hDividerStart + (column * eventColumnWidth) + eventMargin
+                    end = start + eventColumnWidth - eventMargin * 2
+                }
+                val topOffset = ((filteredStartMinute - startMinute) * minuteHeight).toInt()
+                val top = firstDividerTop + topOffset + dividerHeight + eventMargin
+                val bottom = top + (duration * minuteHeight).toInt() - eventMargin * 2 - dividerHeight
+                setRect(eventRects[column]!![index], start, top, end, bottom)
             }
-            val start = columnSpan.startColumn * eventColumnWidth + dividerStart + eventMargin
-            val end = start + (columnSpan.endColumn - columnSpan.startColumn) * eventColumnWidth - eventMargin * 2
-            val topOffset = ((filteredStartMinute - startMinute) * minuteHeight).toInt()
-            val top = firstDividerTop + topOffset + dividerHeight + eventMargin
-            val bottom = top + (duration * minuteHeight).toInt() - eventMargin * 2 - dividerHeight
-            setRect(eventRects[index], start, top, end, bottom)
         }
     }
 
-    private fun setScheduleRects(firstDividerTop: Int, minuteHeight: Float, dividerStart: Int, dividerEnd: Int) {
-        scheduleTimeRanges.forEachIndexed { index, timeRange ->
-            var filteredStartMinute = max(startMinute, timeRange.startMinute)
-            var duration = min(endMinute, timeRange.endMinute) - filteredStartMinute
-            if (duration < MIN_DURATION_MINUTES) {
-                duration = MIN_DURATION_MINUTES
-                filteredStartMinute = endMinute - duration
+    private fun setScheduleRects(firstDividerTop: Int, minuteHeight: Float, hDividerStart: Int, hDividerEnd: Int) {
+        for ((column, timeRanges) in scheduleTimeRanges) {
+            timeRanges.forEachIndexed { index, timeRange ->
+                var filteredStartMinute = max(startMinute, timeRange.startMinute)
+                var duration = min(endMinute, timeRange.endMinute) - filteredStartMinute
+                if (duration < MIN_DURATION_MINUTES) {
+                    duration = MIN_DURATION_MINUTES
+                    filteredStartMinute = endMinute - duration
+                }
+                val columnWidth = columnWidth(hDividerStart, hDividerEnd)
+                val start = hDividerStart + (column * columnWidth)
+                val end = start + columnWidth
+                val topOffset = ((filteredStartMinute - startMinute) * minuteHeight).toInt()
+                val top = firstDividerTop + topOffset + dividerHeight
+                val bottom = top + (duration * minuteHeight).toInt() - dividerHeight
+                setRect(scheduleRects[column]!![index], start, top, end, bottom)
             }
-            val topOffset = ((filteredStartMinute - startMinute) * minuteHeight).toInt()
-            val top = firstDividerTop + topOffset + dividerHeight
-            val bottom = top + (duration * minuteHeight).toInt() - dividerHeight
-            setRect(scheduleRects[index], dividerStart, top, dividerEnd, bottom)
         }
     }
 
@@ -450,7 +481,11 @@ class CalendarWeekView constructor(
     }
 
     private fun measureEvents() {
-        eventViews.forEachIndexed { index, view -> measureExactly(view, eventRects[index]) }
+        for ((column, views) in eventViews.entries) {
+            views.forEachIndexed { index, view ->
+                measureExactly(view, eventRects[column]?.getOrNull(index) ?: error("No rect found for eventView"))
+            }
+        }
     }
 
     companion object {

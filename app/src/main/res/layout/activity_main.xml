@@ -33,7 +33,7 @@
             app:eventMargin="1dp"
             app:halfHourDividerColor="@android:color/transparent"
             app:halfHourHeight="25dp"
-            app:dayCount="1"
+            app:dayCount="7"
             app:hourDividerColor="@color/colorDarkGrey"
             app:hourLabelMarginEnd="0dp"
             app:hourLabelWidth="64dp"

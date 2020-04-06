@@ -1,4 +1,4 @@
-package ir.logicbase.calendarweekview.event
+package ir.logicbase.calendarweekview.column
 
 /**
  * Represents the start and end columns a calendar event should span between.
